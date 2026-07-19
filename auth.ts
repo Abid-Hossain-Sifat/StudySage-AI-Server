@@ -14,8 +14,8 @@ const client = new MongoClient(process.env.MONGODB_URI!, {
 });
 
 export const auth = betterAuth({
-  database: mongodbAdapter(client.db()),
-  trustedOrigins: [process.env.CLIENT_URL!], // ← এটা add করো
+  database: mongodbAdapter(client.db("StudySage")),
+  trustedOrigins: [process.env.CLIENT_URL!],
   emailAndPassword: { enabled: true },
   socialProviders: {
     google: {
