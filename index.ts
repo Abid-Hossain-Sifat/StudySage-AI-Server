@@ -28,37 +28,52 @@ const app = express();
 const clientUrl = process.env.CLIENT_URL || "http://localhost:3000";
 app.use(cors({ origin: clientUrl, credentials: true }));
 
-// ─── Auto-Connect MongoDB Middleware ──────────────────────────
 let isConnected = false;
-app.use(async (_req: Request, _res: Response, next: NextFunction) => {
-  if (!isConnected && process.env.MONGODB_URI) {
-    try {
-      await client.connect();
-      isConnected = true;
-    } catch (err) {
-      console.error("MongoDB auto-connect error:", err);
-    }
-  }
-  next();
-});
-
-app.all("/api/auth/*", toNodeHandler(auth));
-app.use(express.json());
-
-async function getNotesCollection() {
+async function ensureDbConnected() {
   if (!process.env.MONGODB_URI) {
-    throw new Error("MONGODB_URI is not configured in Vercel environment variables.");
+    throw new Error("MONGODB_URI is missing in Vercel Environment Variables.");
   }
   if (!isConnected) {
     await client.connect();
     isConnected = true;
   }
+}
+
+async function getNotesCollection() {
+  await ensureDbConnected();
   return client.db("StudySage").collection("Notes");
 }
 
+// ─── Better Auth Route Wrapper ────────────────────────────────
+app.use("/api/auth", async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    if (!process.env.MONGODB_URI) {
+      return void res.status(500).json({
+        error: "MONGODB_URI is not set in Vercel Environment Variables. Please set MONGODB_URI in Vercel Dashboard Settings -> Environment Variables and redeploy."
+      });
+    }
+    await ensureDbConnected();
+    const handler = toNodeHandler(auth);
+    return handler(req, res);
+  } catch (err: any) {
+    console.error("Auth Route Error:", err);
+    res.status(500).json({ error: err.message || "Authentication service error" });
+  }
+});
+
+app.use(express.json());
+
 // ─── Session Helper ───────────────────────────────────────────
-const getSession = (req: Request) =>
-  auth.api.getSession({ headers: fromNodeHeaders(req.headers) });
+const getSession = async (req: Request) => {
+  try {
+    if (!process.env.MONGODB_URI) return null;
+    await ensureDbConnected();
+    return await auth.api.getSession({ headers: fromNodeHeaders(req.headers) });
+  } catch (err) {
+    console.error("getSession error:", err);
+    return null;
+  }
+};
 
 // ─── Health Check & Favicon ───────────────────────────────────
 app.get("/", (_req: Request, res: Response) => {
@@ -362,7 +377,7 @@ app.delete("/notes/:id", async (req: Request<{ id: string }>, res: Response) => 
 
 // ─── Global Error Handler ──────────────────────────────────────
 app.use((err: any, _req: Request, res: Response, _next: NextFunction) => {
-  console.error("Express Error Handler:", err);
+  console.error("Express Global Error Handler:", err);
   res.status(500).json({ error: err.message || "Internal Server Error" });
 });
 
