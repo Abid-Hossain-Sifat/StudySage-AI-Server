@@ -31,7 +31,13 @@ interface GenerateStudyNoteParams {
   previousNote?: string;
 }
 
-const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY! });
+function getAI() {
+  const apiKey = process.env.GEMINI_API_KEY;
+  if (!apiKey) {
+    throw new Error("GEMINI_API_KEY is missing in environment variables");
+  }
+  return new GoogleGenAI({ apiKey });
+}
 
 const MODEL = "gemini-3.1-flash-lite";
 
@@ -171,6 +177,7 @@ Check for:
 4. Are the key takeaways truly key points?
 5. Are the practice questions relevant and answerable?`;
 
+  const ai = getAI();
   const resp = await ai.models.generateContent({
     model: MODEL,
     contents: critiquePrompt,
@@ -194,6 +201,7 @@ export async function generateStudyNote(
   params: GenerateStudyNoteParams,
 ): Promise<GeneratedNoteOutput> {
   const prompt = buildPrompt(params);
+  const ai = getAI();
 
   const firstResp = await ai.models.generateContent({
     model: MODEL,
@@ -221,6 +229,7 @@ export async function analyzeDocumentText(
 Document text:
 ${text.substring(0, 15000)}`;
 
+  const ai = getAI();
   const resp = await ai.models.generateContent({
     model: MODEL,
     contents: prompt,
@@ -231,7 +240,7 @@ ${text.substring(0, 15000)}`;
     },
   });
 
-  const respText = resp.text ?? resp.candidates?.[0]?.content?.parts?.[0]?.text;
+  const respText = resp.text ?? resp.candidates?.[0]?.text;
   if (!respText) throw new Error("No response from AI model");
 
   return JSON.parse(respText) as AnalyzedDocumentOutput;
