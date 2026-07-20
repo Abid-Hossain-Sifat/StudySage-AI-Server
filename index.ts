@@ -42,13 +42,12 @@ const client = new MongoClient(mongoUri, {
 
 let isConnected = false;
 async function getNotesCollection() {
-  if (!isConnected && process.env.MONGODB_URI) {
-    try {
-      await client.connect();
-      isConnected = true;
-    } catch (err) {
-      console.error("MongoDB Connection Error:", err);
-    }
+  if (!process.env.MONGODB_URI) {
+    throw new Error("MONGODB_URI is not configured in Vercel environment variables.");
+  }
+  if (!isConnected) {
+    await client.connect();
+    isConnected = true;
   }
   return client.db("StudySage").collection("Notes");
 }
