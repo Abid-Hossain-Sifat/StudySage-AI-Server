@@ -18,6 +18,7 @@ const client = new MongoClient(mongoUri, {
 });
 
 export const auth = betterAuth({
+  secret: process.env.BETTER_AUTH_SECRET || "studysage_fallback_secret_key_987654321",
   database: mongodbAdapter(client.db("StudySage")),
   trustedOrigins: [clientUrl],
   emailAndPassword: { enabled: true },
