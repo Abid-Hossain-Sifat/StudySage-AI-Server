@@ -27,7 +27,7 @@ const app = express();
 // ─── Middleware ───────────────────────────────────────────────
 const clientUrl = process.env.CLIENT_URL || "http://localhost:3000";
 app.use(cors({ origin: clientUrl, credentials: true }));
-app.all("/api/auth/{*any}", toNodeHandler(auth));
+app.all("/api/auth/*", toNodeHandler(auth));
 app.use(express.json());
 
 // ─── MongoDB Connection Helper ────────────────────────────────
