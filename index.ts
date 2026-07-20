@@ -334,6 +334,11 @@ app.get("/", (_req: Request, res: Response) => {
 });
 
 // ─── Server Start ─────────────────────────────────────────────
-app.listen(process.env.PORT, () => {
-  console.log(`Server running on Port ${process.env.PORT}`);
-});
+const PORT = process.env.PORT || 11111;
+if (!process.env.VERCEL) {
+  app.listen(PORT, () => {
+    console.log(`Server running on Port ${PORT}`);
+  });
+}
+
+export default app;
