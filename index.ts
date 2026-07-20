@@ -6,22 +6,12 @@ import { toNodeHandler, fromNodeHeaders } from "better-auth/node";
 import { auth } from "./auth.js";
 import { generateStudyNote, analyzeDocumentText } from "./gemini.js";
 // @ts-ignore
-import pdfParse from "pdf-parse";
+import pdfParse from "pdf-parse/lib/pdf-parse.js";
 
 async function extractPdfText(buffer: Buffer): Promise<string> {
-  const pdfParseMod: any = pdfParse;
-  if (typeof pdfParseMod === "function") {
-    const res = await pdfParseMod(buffer);
-    return res.text ?? "";
-  }
-  if (pdfParseMod?.default && typeof pdfParseMod.default === "function") {
-    const res = await pdfParseMod.default(buffer);
-    return res.text ?? "";
-  }
-  if (pdfParseMod?.PDFParse) {
-    const parser = new pdfParseMod.PDFParse({ data: buffer });
-    const res = await parser.getText();
-    if (typeof parser.destroy === "function") parser.destroy();
+  const parseFn = typeof pdfParse === "function" ? pdfParse : (pdfParse as any).default;
+  if (typeof parseFn === "function") {
+    const res = await parseFn(buffer);
     return res.text ?? "";
   }
   throw new Error("Could not initialize PDF parser");
