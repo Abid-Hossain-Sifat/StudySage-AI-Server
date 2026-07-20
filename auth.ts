@@ -9,7 +9,7 @@ dotenv.config();
 const mongoUri = process.env.MONGODB_URI || "mongodb://localhost:27017/StudySage";
 const clientUrl = process.env.CLIENT_URL || "http://localhost:3000";
 
-const client = new MongoClient(mongoUri, {
+export const client = new MongoClient(mongoUri, {
   serverApi: {
     version: ServerApiVersion.v1,
     strict: false,

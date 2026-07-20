@@ -1,9 +1,9 @@
-import express, { type Request, type Response } from "express";
+import express, { type Request, type Response, type NextFunction } from "express";
 import cors from "cors";
 import dotenv from "dotenv";
-import { MongoClient, ServerApiVersion, ObjectId } from "mongodb";
+import { ServerApiVersion, ObjectId } from "mongodb";
 import { toNodeHandler, fromNodeHeaders } from "better-auth/node";
-import { auth } from "./auth.js";
+import { auth, client } from "./auth.js";
 // @ts-ignore
 import multer from "multer";
 
@@ -27,20 +27,24 @@ const app = express();
 // ─── Middleware ───────────────────────────────────────────────
 const clientUrl = process.env.CLIENT_URL || "http://localhost:3000";
 app.use(cors({ origin: clientUrl, credentials: true }));
+
+// ─── Auto-Connect MongoDB Middleware ──────────────────────────
+let isConnected = false;
+app.use(async (_req: Request, _res: Response, next: NextFunction) => {
+  if (!isConnected && process.env.MONGODB_URI) {
+    try {
+      await client.connect();
+      isConnected = true;
+    } catch (err) {
+      console.error("MongoDB auto-connect error:", err);
+    }
+  }
+  next();
+});
+
 app.all("/api/auth/*", toNodeHandler(auth));
 app.use(express.json());
 
-// ─── MongoDB Connection Helper ────────────────────────────────
-const mongoUri = process.env.MONGODB_URI || "mongodb://localhost:27017/StudySage";
-const client = new MongoClient(mongoUri, {
-  serverApi: {
-    version: ServerApiVersion.v1,
-    strict: false,
-    deprecationErrors: true,
-  },
-});
-
-let isConnected = false;
 async function getNotesCollection() {
   if (!process.env.MONGODB_URI) {
     throw new Error("MONGODB_URI is not configured in Vercel environment variables.");
@@ -56,9 +60,13 @@ async function getNotesCollection() {
 const getSession = (req: Request) =>
   auth.api.getSession({ headers: fromNodeHeaders(req.headers) });
 
-// ─── Health Check ─────────────────────────────────────────────
+// ─── Health Check & Favicon ───────────────────────────────────
 app.get("/", (_req: Request, res: Response) => {
   res.send("StudySage AI Server is Online");
+});
+
+app.get("/favicon.ico", (_req: Request, res: Response) => {
+  res.status(204).end();
 });
 
 // ─── POST /generate-notes ─────────────────────────────────────
@@ -350,6 +358,12 @@ app.delete("/notes/:id", async (req: Request<{ id: string }>, res: Response) => 
   } catch (error: any) {
     res.status(500).json({ error: error.message || "Failed to delete note" });
   }
+});
+
+// ─── Global Error Handler ──────────────────────────────────────
+app.use((err: any, _req: Request, res: Response, _next: NextFunction) => {
+  console.error("Express Error Handler:", err);
+  res.status(500).json({ error: err.message || "Internal Server Error" });
 });
 
 // ─── Server Start (Local Dev) ──────────────────────────────────
