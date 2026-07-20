@@ -1,68 +1,67 @@
-"use strict";
-var __importDefault = (this && this.__importDefault) || function (mod) {
-    return (mod && mod.__esModule) ? mod : { "default": mod };
-};
-Object.defineProperty(exports, "__esModule", { value: true });
-exports.generateStudyNote = generateStudyNote;
-exports.analyzeDocumentText = analyzeDocumentText;
-const dotenv_1 = __importDefault(require("dotenv"));
-const genai_1 = require("@google/genai");
-dotenv_1.default.config();
-const ai = new genai_1.GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
-const MODEL = "gemini-3.1-flash-lite";
+import dotenv from "dotenv";
+import { GoogleGenAI, Type } from "@google/genai";
+dotenv.config();
+function getAI() {
+    const apiKey = process.env.GEMINI_API_KEY;
+    if (!apiKey) {
+        throw new Error("GEMINI_API_KEY is missing in environment variables");
+    }
+    return new GoogleGenAI({ apiKey });
+}
+const MODEL = "gemini-3-flash-preview";
 const outputLengthMap = {
     Short: "~300 words, a concise overview",
     Medium: "~800 words, a balanced study note",
     Long: "~1500 words, a comprehensive in-depth guide",
 };
 const studyNoteSchema = {
-    type: genai_1.Type.OBJECT,
+    type: Type.OBJECT,
     properties: {
-        title: { type: genai_1.Type.STRING, description: "Detailed, engaging title for the study note" },
-        summary: { type: genai_1.Type.STRING, description: "A concise summary/overview of the topic" },
-        content: { type: genai_1.Type.STRING, description: "Comprehensive, in-depth study note content in GitHub Flavored Markdown format" },
+        title: { type: Type.STRING, description: "Detailed, engaging title for the study note" },
+        summary: { type: Type.STRING, description: "A concise summary/overview of the topic" },
+        content: { type: Type.STRING, description: "Comprehensive, in-depth study note content in GitHub Flavored Markdown format" },
         keyTakeaways: {
-            type: genai_1.Type.ARRAY,
-            items: { type: genai_1.Type.STRING },
+            type: Type.ARRAY,
+            items: { type: Type.STRING },
             description: "List of key takeaways or core concepts"
         },
         practiceQuestions: {
-            type: genai_1.Type.ARRAY,
-            items: { type: genai_1.Type.STRING },
+            type: Type.ARRAY,
+            items: { type: Type.STRING },
             description: "List of 3-5 practice questions to test understanding"
         }
     },
     required: ["title", "summary", "content", "keyTakeaways", "practiceQuestions"]
 };
 const analysisSchema = {
-    type: genai_1.Type.OBJECT,
+    type: Type.OBJECT,
     properties: {
-        summary: { type: genai_1.Type.STRING, description: "Concise summary of the document" },
+        summary: { type: Type.STRING, description: "Concise summary of the document" },
         keyPoints: {
-            type: genai_1.Type.ARRAY,
-            items: { type: genai_1.Type.STRING },
+            type: Type.ARRAY,
+            items: { type: Type.STRING },
             description: "Main key points from the document"
         },
         importantTerms: {
-            type: genai_1.Type.ARRAY,
+            type: Type.ARRAY,
             items: {
-                type: genai_1.Type.OBJECT,
+                type: Type.OBJECT,
                 properties: {
-                    term: { type: genai_1.Type.STRING, description: "The term or concept name" },
-                    definition: { type: genai_1.Type.STRING, description: "Definition of the term" }
+                    term: { type: Type.STRING, description: "The term or concept name" },
+                    definition: { type: Type.STRING, description: "Definition of the term" }
                 },
                 required: ["term", "definition"]
             },
             description: "Important terms, vocabulary, or concepts with their definitions"
         },
         practiceQuestions: {
-            type: genai_1.Type.ARRAY,
-            items: { type: genai_1.Type.STRING },
+            type: Type.ARRAY,
+            items: { type: Type.STRING },
             description: "List of practice questions based on the content"
         },
         actionItems: {
-            type: genai_1.Type.ARRAY,
-            items: { type: genai_1.Type.STRING },
+            type: Type.ARRAY,
+            items: { type: Type.STRING },
             description: "List of actionable next steps or key study goals based on the content"
         }
     },
@@ -129,6 +128,7 @@ Check for:
 3. Is the content accurate and well-structured?
 4. Are the key takeaways truly key points?
 5. Are the practice questions relevant and answerable?`;
+    const ai = getAI();
     const resp = await ai.models.generateContent({
         model: MODEL,
         contents: critiquePrompt,
@@ -142,14 +142,22 @@ Check for:
     if (!text)
         return draft;
     try {
-        return JSON.parse(text);
+        const obj = JSON.parse(text);
+        return {
+            title: obj.title ?? draft.title,
+            summary: obj.summary ?? draft.summary,
+            content: obj.content ?? draft.content,
+            keyTakeaways: Array.isArray(obj.keyTakeaways) ? obj.keyTakeaways : draft.keyTakeaways,
+            practiceQuestions: Array.isArray(obj.practiceQuestions) ? obj.practiceQuestions : draft.practiceQuestions,
+        };
     }
     catch {
         return draft;
     }
 }
-async function generateStudyNote(params) {
+export async function generateStudyNote(params) {
     const prompt = buildPrompt(params);
+    const ai = getAI();
     const firstResp = await ai.models.generateContent({
         model: MODEL,
         contents: prompt,
@@ -162,15 +170,30 @@ async function generateStudyNote(params) {
     const firstText = firstResp.text ?? firstResp.candidates?.[0]?.content?.parts?.[0]?.text;
     if (!firstText)
         throw new Error("No response from AI model");
-    const draft = JSON.parse(firstText);
+    const draft = (() => {
+        try {
+            const obj = JSON.parse(firstText);
+            return {
+                title: obj.title ?? "",
+                summary: obj.summary ?? "",
+                content: obj.content ?? "",
+                keyTakeaways: Array.isArray(obj.keyTakeaways) ? obj.keyTakeaways : [],
+                practiceQuestions: Array.isArray(obj.practiceQuestions) ? obj.practiceQuestions : [],
+            };
+        }
+        catch {
+            throw new Error("AI returned invalid JSON. Try again.");
+        }
+    })();
     const refined = await critiqueAndRefine(draft, params);
     return refined;
 }
-async function analyzeDocumentText(text) {
+export async function analyzeDocumentText(text) {
     const prompt = `You are an expert academic tutor. Analyze the specific document text below and extract structured insights that are UNIQUE to this document. Do NOT use generic or boilerplate answers — every point must be directly drawn from the given text.
 
 Document text:
 ${text.substring(0, 15000)}`;
+    const ai = getAI();
     const resp = await ai.models.generateContent({
         model: MODEL,
         contents: prompt,
@@ -183,5 +206,19 @@ ${text.substring(0, 15000)}`;
     const respText = resp.text ?? resp.candidates?.[0]?.content?.parts?.[0]?.text;
     if (!respText)
         throw new Error("No response from AI model");
-    return JSON.parse(respText);
+    try {
+        const obj = JSON.parse(respText);
+        return {
+            summary: obj.summary ?? "",
+            keyPoints: Array.isArray(obj.keyPoints) ? obj.keyPoints : [],
+            importantTerms: Array.isArray(obj.importantTerms)
+                ? obj.importantTerms.filter((t) => typeof t === "object" && t !== null && typeof t.term === "string")
+                : [],
+            practiceQuestions: Array.isArray(obj.practiceQuestions) ? obj.practiceQuestions : [],
+            actionItems: Array.isArray(obj.actionItems) ? obj.actionItems : [],
+        };
+    }
+    catch {
+        return { summary: "", keyPoints: [], importantTerms: [], practiceQuestions: [], actionItems: [] };
+    }
 }
