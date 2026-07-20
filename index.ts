@@ -4,25 +4,23 @@ import dotenv from "dotenv";
 import { MongoClient, ServerApiVersion, ObjectId } from "mongodb";
 import { toNodeHandler, fromNodeHeaders } from "better-auth/node";
 import { auth } from "./auth.js";
-import { generateStudyNote, analyzeDocumentText } from "./gemini.js";
-// @ts-ignore
-import pdfParse from "pdf-parse/lib/pdf-parse.js";
-
-async function extractPdfText(buffer: Buffer): Promise<string> {
-  const parseFn = typeof pdfParse === "function" ? pdfParse : (pdfParse as any).default;
-  if (typeof parseFn === "function") {
-    const res = await parseFn(buffer);
-    return res.text ?? "";
-  }
-  throw new Error("Could not initialize PDF parser");
-}
-import mammoth from "mammoth";
 // @ts-ignore
 import multer from "multer";
 
 dotenv.config();
 
 const upload = multer({ limits: { fileSize: 10 * 1024 * 1024 } });
+
+async function extractPdfText(buffer: Buffer): Promise<string> {
+  // @ts-ignore
+  const pdfParseMod = await import("pdf-parse/lib/pdf-parse.js");
+  const parseFn = typeof pdfParseMod.default === "function" ? pdfParseMod.default : pdfParseMod;
+  if (typeof parseFn === "function") {
+    const res = await parseFn(buffer);
+    return res.text ?? "";
+  }
+  throw new Error("Could not initialize PDF parser");
+}
 
 const app = express();
 
@@ -60,16 +58,7 @@ const run = async () => {
         const session = await getSession(req);
         if (!session) return void res.status(401).json({ error: "Unauthorized" });
 
-        const {
-          topic,
-          subject,
-          keywords = [],
-          difficulty = "Beginner",
-          outputLength = "Medium",
-          writingStyle = "Simple",
-          feedback,
-          previousNote,
-        } = req.body;
+        const { topic, subject, keywords = [], difficulty = "Beginner", outputLength = "Medium", writingStyle = "Simple", feedback, previousNote } = req.body;
 
         if (!topic || !subject) {
           return void res.status(400).json({ error: "Topic and subject are required" });
@@ -86,6 +75,8 @@ const run = async () => {
           subject: n.subject,
           summary: n.summary || n.shortDescription || "",
         }));
+
+        const { generateStudyNote } = await import("./gemini.js");
 
         const result = await generateStudyNote({
           topic, subject, keywords, difficulty, outputLength, writingStyle,
@@ -122,8 +113,6 @@ const run = async () => {
     });
 
     // ─── POST /analyze-notes ──────────────────────────────────
-    // FIX: আগে new PDFParse() ব্যবহার হতো যেটা কাজ করে না
-    // এখন সঠিকভাবে await pdfParse(buffer) use করছে
     app.post("/analyze-notes", upload.single("file"), async (req: Request, res: Response) => {
       try {
         const session = await getSession(req);
@@ -140,6 +129,7 @@ const run = async () => {
         if (fileName.endsWith(".pdf")) {
           extractedText = await extractPdfText(request.file.buffer);
         } else if (fileName.endsWith(".docx")) {
+          const mammoth = await import("mammoth");
           const parsed = await mammoth.extractRawText({ buffer: request.file.buffer });
           extractedText = parsed.value;
         } else if (fileName.endsWith(".txt")) {
@@ -152,6 +142,7 @@ const run = async () => {
           return void res.status(400).json({ error: "The uploaded file has no readable text content." });
         }
 
+        const { analyzeDocumentText } = await import("./gemini.js");
         const result = await analyzeDocumentText(extractedText);
 
         const keyPoints = Array.isArray(result.keyPoints) ? result.keyPoints : [];
