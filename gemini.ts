@@ -39,7 +39,7 @@ function getAI() {
   return new GoogleGenAI({ apiKey });
 }
 
-const MODEL = "gemini-3.1-flash-lite";
+const MODEL = "gemini-3-flash-preview";
 
 const outputLengthMap: Record<string, string> = {
   Short: "~300 words, a concise overview",
@@ -191,7 +191,14 @@ Check for:
   const text = resp.text ?? resp.candidates?.[0]?.content?.parts?.[0]?.text;
   if (!text) return draft;
   try {
-    return JSON.parse(text) as GeneratedNoteOutput;
+    const obj = JSON.parse(text) as Partial<GeneratedNoteOutput>;
+    return {
+      title: obj.title ?? draft.title,
+      summary: obj.summary ?? draft.summary,
+      content: obj.content ?? draft.content,
+      keyTakeaways: Array.isArray(obj.keyTakeaways) ? obj.keyTakeaways : draft.keyTakeaways,
+      practiceQuestions: Array.isArray(obj.practiceQuestions) ? obj.practiceQuestions : draft.practiceQuestions,
+    };
   } catch {
     return draft;
   }
@@ -216,7 +223,20 @@ export async function generateStudyNote(
   const firstText = firstResp.text ?? firstResp.candidates?.[0]?.content?.parts?.[0]?.text;
   if (!firstText) throw new Error("No response from AI model");
 
-  const draft = JSON.parse(firstText) as GeneratedNoteOutput;
+  const draft = (() => {
+    try {
+      const obj = JSON.parse(firstText) as Partial<GeneratedNoteOutput>;
+      return {
+        title: obj.title ?? "",
+        summary: obj.summary ?? "",
+        content: obj.content ?? "",
+        keyTakeaways: Array.isArray(obj.keyTakeaways) ? obj.keyTakeaways : [],
+        practiceQuestions: Array.isArray(obj.practiceQuestions) ? obj.practiceQuestions : [],
+      };
+    } catch {
+      throw new Error("AI returned invalid JSON. Try again.");
+    }
+  })();
   const refined = await critiqueAndRefine(draft, params);
   return refined;
 }
@@ -243,5 +263,21 @@ ${text.substring(0, 15000)}`;
   const respText = resp.text ?? resp.candidates?.[0]?.content?.parts?.[0]?.text;
   if (!respText) throw new Error("No response from AI model");
 
-  return JSON.parse(respText) as AnalyzedDocumentOutput;
+  try {
+    const obj = JSON.parse(respText) as Partial<AnalyzedDocumentOutput>;
+    return {
+      summary: obj.summary ?? "",
+      keyPoints: Array.isArray(obj.keyPoints) ? obj.keyPoints : [],
+      importantTerms: Array.isArray(obj.importantTerms)
+        ? obj.importantTerms.filter(
+            (t): t is { term: string; definition: string } =>
+              typeof t === "object" && t !== null && typeof t.term === "string",
+          )
+        : [],
+      practiceQuestions: Array.isArray(obj.practiceQuestions) ? obj.practiceQuestions : [],
+      actionItems: Array.isArray(obj.actionItems) ? obj.actionItems : [],
+    };
+  } catch {
+    return { summary: "", keyPoints: [], importantTerms: [], practiceQuestions: [], actionItems: [] };
+  }
 }
