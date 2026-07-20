@@ -240,7 +240,7 @@ ${text.substring(0, 15000)}`;
     },
   });
 
-  const respText = resp.text ?? resp.candidates?.[0]?.text;
+  const respText = resp.text ?? resp.candidates?.[0]?.content?.parts?.[0]?.text;
   if (!respText) throw new Error("No response from AI model");
 
   return JSON.parse(respText) as AnalyzedDocumentOutput;
