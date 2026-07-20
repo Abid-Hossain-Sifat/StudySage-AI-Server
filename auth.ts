@@ -6,7 +6,10 @@ import dotenv from "dotenv";
 
 dotenv.config();
 
-const client = new MongoClient(process.env.MONGODB_URI!, {
+const mongoUri = process.env.MONGODB_URI || "mongodb://localhost:27017/StudySage";
+const clientUrl = process.env.CLIENT_URL || "http://localhost:3000";
+
+const client = new MongoClient(mongoUri, {
   serverApi: {
     version: ServerApiVersion.v1,
     strict: false,
@@ -16,12 +19,12 @@ const client = new MongoClient(process.env.MONGODB_URI!, {
 
 export const auth = betterAuth({
   database: mongodbAdapter(client.db("StudySage")),
-  trustedOrigins: [process.env.CLIENT_URL!],
+  trustedOrigins: [clientUrl],
   emailAndPassword: { enabled: true },
   socialProviders: {
     google: {
-      clientId: process.env.GOOGLE_CLIENT_ID as string,
-      clientSecret: process.env.GOOGLE_CLIENT_SECRET as string,
+      clientId: process.env.GOOGLE_CLIENT_ID || "placeholder",
+      clientSecret: process.env.GOOGLE_CLIENT_SECRET || "placeholder",
     },
   },
   plugins: [jwt()],
